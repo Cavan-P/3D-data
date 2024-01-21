@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Physics Simulation</title>
+		<style>
+			body { margin: 0; }
+		</style>
+	</head>
+	<body>
+        <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+        <script id="fragment_shader" type="x-shader/x-fragment">
+			precision mediump float;
+
+			varying vec3 normalInterp;
+			varying vec3 vertPos;
+            varying vec3 newPosition;
+
+			uniform int mode;
+
+			const vec3 lightPos = vec3(1.0,0.0,10.0);
+			
+            const vec3 water=vec3(0.0,0.0,1.0);
+            const vec3 beach=vec3(0.4,0.3,0);
+            const vec3 grass=vec3(0.1,0.6,0.2);
+            const vec3 forrest=vec3(0.0,0.25,0.0);
+            const vec3 rock=vec3(0.125,0.125,0.0);
+            const vec3 snow=vec3(0.5,0.5,0.5);
+ 			const vec3 diffuseColor = vec3(0.2, 0.2, 0.2);
+			const vec3 specColor = vec3(0.2, 0.2, 0.1);
+			const float shininess = 2.0;
+			const float screenGamma = 2.2; // Assume the monitor is calibrated to the sRGB color space
+
+			void main() {
+
+			  vec3 normal = normalize(normalInterp);
+			  vec3 lightDir = normalize(lightPos - vertPos);
+
+			  float lambertian = max(dot(lightDir,normal), 0.0);
+			  float specular = 0.0;
+
+			  if(lambertian > 0.0) {
+
+				vec3 viewDir = normalize(-vertPos);
+
+				// this is blinn phong
+				vec3 halfDir = normalize(lightDir + viewDir);
+				float specAngle = max(dot(halfDir, normal), 0.0);
+				specular = pow(specAngle, shininess);
+				   
+				// this is phong (for comparison)
+				if(mode == 2) {
+				  vec3 reflectDir = reflect(-lightDir, normal);
+				  specAngle = max(dot(reflectDir, viewDir), 0.0);
+				  // note that the exponent is different here
+				  specular = pow(specAngle, shininess/4.0);
+				}
+			  }
+              vec3 ambientColor = snow;
+              if (newPosition.z<0.0) ambientColor=water;
+              else if (newPosition.z<20.0) ambientColor=beach;
+              else if (newPosition.z<40.0) ambientColor=grass;
+              else if (newPosition.z<60.0) ambientColor=forrest;
+              else if (newPosition.z<80.0) ambientColor=rock;
+			  vec3 colorLinear = ambientColor +
+								 lambertian * diffuseColor +
+								 specular * specColor;
+			  // apply gamma correction (assume ambientColor, diffuseColor and specColor
+			  // have been linearized, i.e. have no gamma correction in them)
+			  vec3 colorGammaCorrected = pow(colorLinear, vec3(1.0/screenGamma));
+			  // use the gamma corrected color in the fragment
+			  gl_FragColor = vec4(colorGammaCorrected, 1.0);
+			}
+		</script>
+		<script id="vertex_shader" type="x-shader/x-vertex">
+			
+			varying vec3 normalInterp;
+			varying vec3 vertPos;
+            varying vec3 newPosition;
+
+			void main(){
+                newPosition=position;
+			vec3 inputPosition=position;
+			vec2 inputTexCoord=vec2(0.0,0.0);
+			vec3 inputNormal=normal;
+
+			mat4 projection=projectionMatrix;
+			mat4 modelview=modelViewMatrix;
+			mat4 normalMat=mat4 (normalMatrix);
+
+				gl_Position = projection * modelview * vec4(inputPosition, 1.0);
+				vec4 vertPos4 = modelview * vec4(inputPosition, 1.0);
+				vertPos = vec3(vertPos4) / vertPos4.w;
+				normalInterp = vec3(normalMat * vec4(inputNormal, 0.0));
+			}
+		</script>
+
+        <script id="fragmentShader" type="x-shader/x-fragment">
+
+            varying float vAverageElevation;
+
+			void main() {
+				//Actual min elevation should round down to 11
+				//Actual max elevation should round down to 48
+				//Different values account for better looking mesh color-wise
+				
+				float minElevation = 1.0;
+				float maxElevation = 43.0;
+
+				float normalizedElevation = (vAverageElevation - minElevation) / (maxElevation - minElevation);
+
+				vec3 color;
+				if (normalizedElevation < 0.5) {
+					color = mix(vec3(0.0, 0.25, 0.0), vec3(0.46, 0.35, 0.20), normalizedElevation * 2.0);
+				} else {
+					color = mix(vec3(0.46, 0.35, 0.20), vec3(1.0, 1.0, 1.0), (normalizedElevation - 0.5) * 2.0);
+				}
+
+				gl_FragColor = vec4(color, 1.0);
+			}
+        </script>
+        <script id="vertexShader" type="x-shader/x-vertex">
+
+            attribute float averageElevation;
+			varying float vAverageElevation;
+
+			void main() {
+				vAverageElevation = averageElevation;
+				gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+			}
+
+
+        </script>
+		<script type="module" src="/main.js"></script>
+	</body>
+</html>
